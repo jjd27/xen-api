@@ -52,7 +52,7 @@ sig
 		params: string;
 		dev_type: devty;
 		unpluggable: bool;
-		protocol: protocol option;
+		protocol: protocol;
 		extra_backend_keys: (string * string) list;
 		extra_private_keys: (string * string) list;
 		backend_domid: int;

@@ -56,6 +56,7 @@ module VmExtra = struct
 		information away and generate fresh data on the following 'create' *)
 	type persistent_t = {
 		build_info: Domain.build_info option;
+		arch: Domain.domarch option;
 		ty: Vm.builder_info option;
 		last_start_time: float;
 	} with rpc
@@ -151,6 +152,7 @@ let domid_of_uuid ~xc ~xs domain_selection uuid =
 
 let get_uuid ~xc domid = uuid_of_di (Xenctrl.domain_getinfo xc domid)
 
+(* Create a frontend in a managed domain *)
 let create_vbd_frontend ~xc ~xs task frontend_domid vdi =
 	let frontend_vm_id = get_uuid ~xc frontend_domid |> Uuid.string_of_uuid in
 	let backend_vm_id = get_uuid ~xc vdi.domid |> Uuid.string_of_uuid in
@@ -169,7 +171,7 @@ let create_vbd_frontend ~xc ~xs task frontend_domid vdi =
 				params = vdi.attach_info.Storage_interface.params;
 				dev_type = Device.Vbd.Disk;
 				unpluggable = true;
-				protocol = None;
+				protocol = Device_common.Protocol_Native; (* it's a managed domain, so there's no need to worry about arch *)
 				extra_backend_keys = List.map (fun (k, v) -> "sm-data/" ^ k, v) (vdi.attach_info.Storage_interface.xenstore_data);
 				extra_private_keys = [];
 				backend_domid = backend_domid;
@@ -554,8 +556,10 @@ module VM = struct
 			vcpus = vm.vcpu_max;
 			priv = builder_spec_info;
 		} in
+		let arch = List.assoc "domarch" vm.platformdata in
 		{
 			VmExtra.build_info = Some build_info;
+			arch = Some (Domain.domarch_of_string arch);
 			ty = Some vm.ty;
 			(* Earlier than the PV drivers update time, therefore
 			   any cached PV driver information will be kept. *)
@@ -631,7 +635,7 @@ module VM = struct
 							x.VmExtra.persistent, x.VmExtra.non_persistent
 						| None -> begin
 							debug "VM = %s; has no stored domain-level configuration, regenerating" vm.Vm.id;
-							let persistent = { VmExtra.build_info = None; ty = None; last_start_time = Unix.gettimeofday ()} in
+							let persistent = { VmExtra.build_info = None; arch = None; ty = None; last_start_time = Unix.gettimeofday ()} in
 							let non_persistent = generate_non_persistent_state xc xs vm in
 							persistent, non_persistent
 						end in
@@ -852,8 +856,10 @@ module VM = struct
 	let create_device_model_config vbds vifs vmextra = match vmextra.VmExtra.persistent, vmextra.VmExtra.non_persistent with
 		| { VmExtra.build_info = None }, _
 		| { VmExtra.ty = None }, _ -> raise (Domain_not_built)
+		| { VmExtra.arch = None }, _ -> raise (Domain_not_built)
 		| {
 			VmExtra.build_info = Some build_info;
+			arch = Some arch;
 			ty = Some ty;
 		},{
 			VmExtra.qemu_vbds = qemu_vbds
@@ -979,6 +985,7 @@ module VM = struct
 			let d = DB.read_exn vm.Vm.id in
 			let persistent = { d.VmExtra.persistent with
 				VmExtra.build_info = Some build_info;
+				arch = Some arch;
 				ty = Some vm.ty;
 			} in
 			DB.write k {
@@ -1208,7 +1215,7 @@ module VM = struct
 					| { VmExtra.build_info = None } ->
 						error "VM = %s; No stored build_info: cannot safely restore" vm.Vm.id;
 						raise (Does_not_exist("build_info", vm.Vm.id))
-					| { VmExtra.build_info = Some x; VmExtra.ty } ->
+					| { VmExtra.build_info = Some x; VmExtra.arch; VmExtra.ty } ->
 						let initial_target = get_initial_target ~xs domid in
 						let timeoffset = match ty with
 								Some x -> (match x with HVM hvm_info -> hvm_info.timeoffset | _ -> "")
@@ -1523,7 +1530,14 @@ module VBD = struct
 							| Disk -> Device.Vbd.Disk
 						);
 						unpluggable = vbd.unpluggable;
-						protocol = None;
+						protocol = (match vm_t with
+							| None -> raise Domain_not_built (* you can't plug a VBD to a non-built domain *)
+							| Some x -> (match x.VmExtra.persistent.VmExtra.arch with
+								| None | Some Domain.Arch_HVM | Some Domain.Arch_native
+								                       -> Device_common.Protocol_Native
+								| Some Domain.Arch_X32 -> Device_common.Protocol_X86_32
+								| Some Domain.Arch_X64 -> Device_common.Protocol_X86_64
+						));
 						extra_backend_keys;
 						extra_private_keys = dp_id :: vdi_id :: vbd_id :: vbd.extra_private_keys;
 						backend_domid = vdi.domid

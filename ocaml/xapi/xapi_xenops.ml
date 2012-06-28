@@ -340,6 +340,9 @@ module MD = struct
 				(fun (k, v) -> k <> "tsc_mode" || List.mem v ["0"; "1"; "2"; "3"])
 				platformdata
 		in
+		(* Save domarch into platform field *)
+		let domarch = vm.API.vM_domarch in
+		let platformdata = ("domarch", domarch) :: platformdata in
 
 		let pci_msitranslate = true in (* default setting *)
 		(* CA-55754: allow VM.other_config:msitranslate to override the bus-wide setting *)
