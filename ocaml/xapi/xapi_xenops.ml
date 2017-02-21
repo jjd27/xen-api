@@ -1882,7 +1882,9 @@ let rec events_watch ~__context queue_name from =
 	let dbg = Context.string_of_task __context in
 	if Xapi_fist.delay_xenopsd_event_threads () then Thread.delay 30.0;
 	let module Client = (val make_client queue_name : XENOPS) in
+	debug "BEFORE Client.UPDATES.get %s" queue_name;
 	let barriers, events, next = Client.UPDATES.get dbg from None in
+	debug "AFTER Client.UPDATES.get %s (got %d barriers, %d events, next=%d)" queue_name (List.length barriers) (List.length events) next;
 	let done_events = ref [] in
 	let already_done x = List.mem x !done_events in
 	let add_event x = done_events := (x :: !done_events) in		
@@ -1937,15 +1939,18 @@ let rec events_watch ~__context queue_name from =
 						| Task id ->
 							debug "xenops event on Task %s" id;
 							add_to_queue "task" (Printf.sprintf "task(%s)" id, (fun () -> update_task ~__context queue_name id))
-				end) l			
+				end;
+				debug " - finished Processing event: %s" (ev |> Dynamic.rpc_of_id |> Jsonrpc.to_string);
+				) l
 	in
 	List.iter (fun (id,b_events) -> 
-		debug "Processing barrier %d" id;
+		debug "Processing barrier %d (contains %d events)" id (List.length b_events);
 		do_updates b_events;
 		(* Find out which VM this corresponds to *)
 		let vm_id = Events_from_xenopsd.lookup_id id in
 		add_to_queue vm_id (Printf.sprintf "barrier(%d)" id, (fun () -> Events_from_xenopsd.wakeup queue_name dbg id))
 	) barriers;
+	debug "Processing non-barrier events (%d events)" (List.length events);
 	do_updates events;
 	(* Loop *)
 	events_watch ~__context queue_name (Some next)
