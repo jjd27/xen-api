@@ -1924,7 +1924,9 @@ let rec events_watch ~__context queue_name from =
 						| Task id ->
 							debug "xenops event on Task %s" id;
 							update_task ~__context queue_name id
-				end) l			
+				end;
+				debug " - finished Processing event: %s" (ev |> Dynamic.rpc_of_id |> Jsonrpc.to_string);
+				) l			
 	in
 	List.iter (fun (id,b_events) -> 
 		debug "Processing barrier %d" id;
