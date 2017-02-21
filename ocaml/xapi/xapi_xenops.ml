@@ -1878,6 +1878,15 @@ let rec events_watch ~__context queue_name from =
 	let add_event x = done_events := (x :: !done_events) in		
 	let do_updates l = 
 		let open Dynamic in	
+		let queues = Hashtbl.create 25 in
+		let add_to_queue vm f =
+			if not(Hashtbl.mem queues vm) then
+				Hashtbl.add queues vm [f]
+			else
+				let queue = Hashtbl.find queues vm in
+				Hashtbl.replace queues vm (f::queue)
+		in
+		(* Prepare per-VM work queues *)
 		List.iter
 			(fun ev ->
 				debug "Processing event: %s" (ev |> Dynamic.rpc_of_id |> Jsonrpc.to_string);
@@ -1891,42 +1900,63 @@ let rec events_watch ~__context queue_name from =
 							then debug "ignoring xenops event on VM %s" id
 							else begin
 								debug "xenops event on VM %s" id;
-								update_vm ~__context id;
+								add_to_queue id (fun () -> update_vm ~__context id)
 							end
 						| Vbd id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on VBD %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on VBD %s.%s" (fst id) (snd id);
-								update_vbd ~__context id
+								add_to_queue (fst id) (fun () -> update_vbd ~__context id)
 							end
 						| Vif id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on VIF %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on VIF %s.%s" (fst id) (snd id);
-								update_vif ~__context id
+								add_to_queue (fst id) (fun () -> update_vif ~__context id)
 							end
 						| Pci id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on PCI %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on PCI %s.%s" (fst id) (snd id);
-								update_pci ~__context id
+								add_to_queue (fst id) (fun () -> update_pci ~__context id)
 							end
 						| Vgpu id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on VGPU %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on VGPU %s.%s" (fst id) (snd id);
-								update_vgpu ~__context id
+								add_to_queue (fst id) (fun () -> update_vgpu ~__context id)
 							end
 						| Task id ->
 							debug "xenops event on Task %s" id;
 							update_task ~__context queue_name id
 				end;
 				debug " - finished Processing event: %s" (ev |> Dynamic.rpc_of_id |> Jsonrpc.to_string);
-				) l			
+				) l;
+		(* Execute the work queues in independent threads *)
+		let thread_ht = Hashtbl.create 25 in
+		Hashtbl.iter (fun vm rev_queue ->
+			let queue = List.rev rev_queue in
+			let num = List.length queue in
+			debug "Spawning thread for work queue for %s (%d items)" vm num;
+			let t = Thread.create (fun () ->
+				List.iteri (fun i f ->
+					debug "Thread for %s processing work item %d of %d" vm i num;
+					f ()
+				) queue;
+				debug "Thread for %s finished" vm
+			) () in
+			Hashtbl.add thread_ht vm t
+		) queues;
+		(* Wait for threads to complete *)
+		Hashtbl.iter (fun vm t ->
+			Thread.join t;
+			debug "Joined thread for work queue %s" vm
+		) thread_ht;
+		debug "All threads finished!"
 	in
 	List.iter (fun (id,b_events) -> 
 		debug "Processing barrier %d" id;
