@@ -1886,17 +1886,8 @@ let rec events_watch ~__context queue_name from =
 	let done_events = ref [] in
 	let already_done x = List.mem x !done_events in
 	let add_event x = done_events := (x :: !done_events) in		
-
-	(* Per-VM queue of operations *)
-	let queues = Hashtbl.create 25 in
-	let add_to_queue vm f =
-		if not(Hashtbl.mem queues vm) then
-			Hashtbl.add queues vm [f]
-		else
-			let queue = Hashtbl.find queues vm in
-			Hashtbl.replace queues vm (f::queue)
-	in
-
+	let open Lib_worker in
+	let add_to_queue = Redirector.push Redirector.default in
 	let do_updates l = 
 		let open Dynamic in	
 		(* Prepare per-VM work queues *)
@@ -1913,35 +1904,35 @@ let rec events_watch ~__context queue_name from =
 							then debug "ignoring xenops event on VM %s" id
 							else begin
 								debug "xenops event on VM %s" id;
-								add_to_queue id (fun () -> update_vm ~__context id)
+								add_to_queue id (Printf.sprintf "update_vm(%s)" id, (fun () -> update_vm ~__context id))
 							end
 						| Vbd id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on VBD %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on VBD %s.%s" (fst id) (snd id);
-								add_to_queue (fst id) (fun () -> update_vbd ~__context id)
+								add_to_queue (fst id) (Printf.sprintf "update_vbd(%s.%s)" (fst id) (snd id), (fun () -> update_vbd ~__context id))
 							end
 						| Vif id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on VIF %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on VIF %s.%s" (fst id) (snd id);
-								add_to_queue (fst id) (fun () -> update_vif ~__context id)
+								add_to_queue (fst id) (Printf.sprintf "update_vif(%s.%s)" (fst id) (snd id), (fun () -> update_vif ~__context id))
 							end
 						| Pci id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on PCI %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on PCI %s.%s" (fst id) (snd id);
-								add_to_queue (fst id) (fun () -> update_pci ~__context id)
+								add_to_queue (fst id) (Printf.sprintf "update_pci(%s.%s)" (fst id) (snd id), (fun () -> update_pci ~__context id))
 							end
 						| Vgpu id ->
 							if Events_from_xenopsd.are_suppressed (fst id)
 							then debug "ignoring xenops event on VGPU %s.%s" (fst id) (snd id)
 							else begin
 								debug "xenops event on VGPU %s.%s" (fst id) (snd id);
-								add_to_queue (fst id) (fun () -> update_vgpu ~__context id)
+								add_to_queue (fst id) (Printf.sprintf "update_vgpu(%s.%s)" (fst id) (snd id), (fun () -> update_vgpu ~__context id))
 							end
 						| Task id ->
 							debug "xenops event on Task %s" id;
@@ -1956,37 +1947,17 @@ let rec events_watch ~__context queue_name from =
 		do_updates b_events;
 		(* Find out which VM this corresponds to *)
 		let vm_id = Events_from_xenopsd.lookup_id id in
-		add_to_queue vm_id (fun () -> Events_from_xenopsd.wakeup queue_name dbg id)
+		add_to_queue vm_id (Printf.sprintf "barrier(%d)" id, (fun () -> Events_from_xenopsd.wakeup queue_name dbg id))
 	) barriers;
 	debug "Processing non-barrier events";
 	do_updates events;
-
-	(* Execute the work queues in independent threads *)
-	let thread_ht = Hashtbl.create 25 in
-	Hashtbl.iter (fun vm rev_queue ->
-		let queue = List.rev rev_queue in
-		let num = List.length queue in
-		debug "Spawning thread for work queue for %s (%d items)" vm num;
-		let t = Thread.create (fun () ->
-			List.iteri (fun i f ->
-				debug "Thread for %s processing work item %d of %d" vm i num;
-				f ()
-			) queue;
-			debug "Thread for %s finished" vm
-		) () in
-		Hashtbl.add thread_ht vm t
-	) queues;
-	(* Wait for threads to complete *)
-	Hashtbl.iter (fun vm t ->
-		Thread.join t;
-		debug "Joined thread for work queue %s" vm
-	) thread_ht;
-	debug "All threads finished!";
-
 	(* Loop *)
 	events_watch ~__context queue_name (Some next)
 
 let events_from_xenopsd queue_name =
+	(* Start the thread pool *)
+	Lib_worker.WorkerPool.start 25;
+	(* Start the thread that puts events into the thread pool *)
 	Server_helpers.exec_with_new_task (Printf.sprintf "%s events" queue_name)
 		(fun __context ->
 			while true do
