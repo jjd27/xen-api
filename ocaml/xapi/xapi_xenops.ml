@@ -1235,6 +1235,12 @@ module Events_from_xenopsd = struct
 	}
 	let active = Hashtbl.create 10
 	let active_m = Mutex.create ()
+
+	(* Maps barrier ID to VM *)
+	let mapping = Hashtbl.create 25
+	let mapping_m = Mutex.create ()
+	let lookup_id id = Mutex.execute mapping_m (fun () -> Hashtbl.find mapping id)
+
 	let register =
 		let counter = ref 0 in
 		fun t ->
@@ -1249,7 +1255,11 @@ module Events_from_xenopsd = struct
 		let module Client = (val make_client queue_name : XENOPS) in
 		let t = make () in
 		let id = register t in
-		debug "Client.UPDATES.inject_barrier %d" id;
+		debug "Client.UPDATES.inject_barrier %d (vm_id = %s)" id vm_id;
+		Mutex.execute mapping_m
+			(fun () ->
+				Hashtbl.replace mapping id vm_id
+			);
 		Client.UPDATES.inject_barrier dbg vm_id id;
 		Mutex.execute t.m
 			(fun () ->
@@ -1876,16 +1886,19 @@ let rec events_watch ~__context queue_name from =
 	let done_events = ref [] in
 	let already_done x = List.mem x !done_events in
 	let add_event x = done_events := (x :: !done_events) in		
+
+	(* Per-VM queue of operations *)
+	let queues = Hashtbl.create 25 in
+	let add_to_queue vm f =
+		if not(Hashtbl.mem queues vm) then
+			Hashtbl.add queues vm [f]
+		else
+			let queue = Hashtbl.find queues vm in
+			Hashtbl.replace queues vm (f::queue)
+	in
+
 	let do_updates l = 
 		let open Dynamic in	
-		let queues = Hashtbl.create 25 in
-		let add_to_queue vm f =
-			if not(Hashtbl.mem queues vm) then
-				Hashtbl.add queues vm [f]
-			else
-				let queue = Hashtbl.find queues vm in
-				Hashtbl.replace queues vm (f::queue)
-		in
 		(* Prepare per-VM work queues *)
 		List.iter
 			(fun ev ->
@@ -1932,37 +1945,45 @@ let rec events_watch ~__context queue_name from =
 							end
 						| Task id ->
 							debug "xenops event on Task %s" id;
+							(* TODO which queue?? *)
 							update_task ~__context queue_name id
 				end;
 				debug " - finished Processing event: %s" (ev |> Dynamic.rpc_of_id |> Jsonrpc.to_string);
 				) l;
-		(* Execute the work queues in independent threads *)
-		let thread_ht = Hashtbl.create 25 in
-		Hashtbl.iter (fun vm rev_queue ->
-			let queue = List.rev rev_queue in
-			let num = List.length queue in
-			debug "Spawning thread for work queue for %s (%d items)" vm num;
-			let t = Thread.create (fun () ->
-				List.iteri (fun i f ->
-					debug "Thread for %s processing work item %d of %d" vm i num;
-					f ()
-				) queue;
-				debug "Thread for %s finished" vm
-			) () in
-			Hashtbl.add thread_ht vm t
-		) queues;
-		(* Wait for threads to complete *)
-		Hashtbl.iter (fun vm t ->
-			Thread.join t;
-			debug "Joined thread for work queue %s" vm
-		) thread_ht;
-		debug "All threads finished!"
 	in
 	List.iter (fun (id,b_events) -> 
 		debug "Processing barrier %d" id;
 		do_updates b_events;
-		Events_from_xenopsd.wakeup queue_name dbg id) barriers;
+		(* Find out which VM this corresponds to *)
+		let vm_id = Events_from_xenopsd.lookup_id id in
+		add_to_queue vm_id (fun () -> Events_from_xenopsd.wakeup queue_name dbg id)
+	) barriers;
+	debug "Processing non-barrier events";
 	do_updates events;
+
+	(* Execute the work queues in independent threads *)
+	let thread_ht = Hashtbl.create 25 in
+	Hashtbl.iter (fun vm rev_queue ->
+		let queue = List.rev rev_queue in
+		let num = List.length queue in
+		debug "Spawning thread for work queue for %s (%d items)" vm num;
+		let t = Thread.create (fun () ->
+			List.iteri (fun i f ->
+				debug "Thread for %s processing work item %d of %d" vm i num;
+				f ()
+			) queue;
+			debug "Thread for %s finished" vm
+		) () in
+		Hashtbl.add thread_ht vm t
+	) queues;
+	(* Wait for threads to complete *)
+	Hashtbl.iter (fun vm t ->
+		Thread.join t;
+		debug "Joined thread for work queue %s" vm
+	) thread_ht;
+	debug "All threads finished!";
+
+	(* Loop *)
 	events_watch ~__context queue_name (Some next)
 
 let events_from_xenopsd queue_name =
