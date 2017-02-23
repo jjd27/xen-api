@@ -148,7 +148,7 @@ module Redirector = struct
 					(fun () ->
 						let q, redirected = if StringMap.mem tag !overrides then StringMap.find tag !overrides, true else t.queues, false in
 						(*debug "Queue.push %s onto %s%s:[ %s ]" (string_of_int item) (if redirected then "redirected " else "") tag (String.concat ", " (List.rev (Queue.fold (fun acc item -> string_of_int item :: acc) [] (Queues.get tag q))));*)
-						match item with (label, _) -> debug "Queue.push onto %s%s: %s" (if redirected then "redirected " else "") tag label;
+						match item with (label, _) -> debug "Queue.push onto %s%s: %s (already contains ?? items)" (if redirected then "redirected " else "") tag label;
 
 						Queues.push_with_coalesce should_keep tag item q
 					)
