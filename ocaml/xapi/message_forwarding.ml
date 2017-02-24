@@ -2551,7 +2551,7 @@ module Forward = functor(Local: Custom_actions.CUSTOM_ACTIONS) -> struct
 
 		let diagnostic_measure_db_speed ~__context ~host =
 			info "Host.diagnostic_measure_db_speed: host='%s'" (host_uuid ~__context host);
-			Stats.reset "TODO";
+			List.iter Stats.reset Xapi_globs.interesting_stats;
 			let local_fn = Local.Host.diagnostic_measure_db_speed ~host in
 			do_op_on ~local_fn ~__context ~host
   			(fun session_id rpc ->

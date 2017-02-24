@@ -177,6 +177,7 @@ let do_db_xml_rpc_persistent_with_reopen ~host ~path (req: string) : Db_interfac
 	| (Some stunnel_proc) ->
 	    let fd = stunnel_proc.Stunnel.fd in
 	    with_timestamp (fun () ->
+		Stats.time_this "diagnostic: with_http request" (fun () ->
 	        with_http request (fun (response, _) ->
 				(* XML responses must have a content-length because we cannot use the Xml.parse_in
 				   in_channel function: the input channel will buffer an arbitrary amount of stuff
@@ -194,7 +195,7 @@ let do_db_xml_rpc_persistent_with_reopen ~host ~path (req: string) : Db_interfac
 				in
 				write_ok := true;
 				result := res (* yippeee! return and exit from while loop *)
-			) fd
+			) fd)
         )
       with
       | Http_svr.Client_requested_size_over_limit ->
@@ -258,9 +259,9 @@ let do_db_xml_rpc_persistent_with_reopen ~host ~path (req: string) : Db_interfac
     
 let execute_remote_fn string path =
   let host = Pool_role.get_master_address () in
-  Stats.time_this "execute_remote_fn: Db_lock" (fun ()->
+  Stats.time_this "diagnostic: Db_lock.with_lock" (fun ()->
     Db_lock.with_lock
       (fun () ->
          (* Ensure that this function is always called under mutual exclusion (provided by the recursive db lock) *)
-         Stats.time_this "execute_remote_fn: do_db_xml_rpc_persistent_with_reopen" (fun ()->
+         Stats.time_this "diagnostic: do_db_xml_rpc_persistent_with_reopen" (fun ()->
              do_db_xml_rpc_persistent_with_reopen ~host ~path string)))

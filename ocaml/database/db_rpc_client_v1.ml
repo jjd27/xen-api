@@ -49,7 +49,9 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 	let do_remote_call marshall_args unmarshall_resp fn_name args =
 		let xml = marshall_args args in
 		let xml = XMLRPC.To.array [XMLRPC.To.string fn_name; XMLRPC.To.string "" (* unused *); xml] in
-		let resp = match RPC.rpc (Xml.to_string xml) with
+		let str = Xml.to_string xml in
+		let rpc = Stats.time_this "diagnostic: RPC.rpc" (fun () -> RPC.rpc str) in
+		let resp = match rpc with
 		| Db_interface.String s -> Xml.parse_string s
 		| Db_interface.Bigbuf b -> Xml.parse_bigbuffer b
 		in
@@ -126,18 +128,22 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 			(x,y)
 			
 	let write_field _ a b c d =
+		Stats.time_this "diagnostic: Db_rpc_client_v1.write_field" (fun () ->
 		do_remote_call
 			marshall_write_field_args
 			unmarshall_write_field_response
 			"write_field"
 			(a,b,c,d)
+		)
 			
 	let read_field _ x y z =
+		Stats.time_this "diagnostic: Db_rpc_client_v1.read_field" (fun () ->
 		do_remote_call
 			marshall_read_field_args
 			unmarshall_read_field_response
 			"read_field"
 			(x,y,z)
+		)
 			
 	let find_refs_with_filter _ s e =
 		do_remote_call
