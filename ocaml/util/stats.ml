@@ -67,7 +67,7 @@ let sd (p: Normal_population.t) =
   sqrt v
 
 let string_of (p: Normal_population.t) = 
-  Printf.sprintf "%f [sd = %f]" (mean p) (sd p)
+  Printf.sprintf "%f [sd = %f] n = %d" (mean p) (sd p) p.Normal_population.n
 
 let sample (name: string) (x: float) : unit = 
   (* Use the lognormal distribution: *)
