@@ -1111,3 +1111,5 @@ module Resources = struct
 			List.map (make_resource [R_OK; W_OK] false) nonessential_dirs;
 		]
 end
+
+let interesting_stats = []

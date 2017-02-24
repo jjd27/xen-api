@@ -1646,8 +1646,11 @@ let apply_guest_agent_config ~__context ~host =
 
 let diagnostic_measure_db_speed ~__context ~host =
 
+  let b = Buffer.create 100 in
+
   (* Measure the time taken to set/unset this host's description *)
-  let measure fn =
+  let measure name fn =
+    List.iter (fun s -> debug "resetting %s" s; Stats.reset s) Xapi_globs.interesting_stats;
     let start = Unix.gettimeofday () in
     let rec inner n =
       if Unix.gettimeofday () > start +. 10.0 then n else begin
@@ -1655,25 +1658,21 @@ let diagnostic_measure_db_speed ~__context ~host =
         inner (n+1)
       end
     in
-    float_of_int (inner 0) /. 10.0
+    let result = float_of_int (inner 0) /. 10.0 in
+    Printf.bprintf b "%s  : %f per second\n" name result;
+    let all_stats = Stats.summarise () in
+    List.iter (fun s -> try Printf.bprintf b "%s  : %s  : %s\n" name s (List.assoc s all_stats) with Not_found -> ()) Xapi_globs.interesting_stats;
   in
 
-  let mutex = Mutex.create () in
-  
   let desc_before = Db.Host.get_name_description ~__context ~self:host in
 
-  let desc_read = measure (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host)) in
-  let desc_write = measure (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))) in
-  let lock = measure (fun () -> Mutex.lock mutex; Mutex.unlock mutex) in
+  Printf.bprintf b "TIMING STATS\n";
+  Printf.bprintf b "============\n";
+  measure "reads" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host));
+  measure "writes" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000))));
 
   Db.Host.set_name_description ~__context ~self:host ~value:desc_before;
   
-  let b = Buffer.create 100 in
-  Printf.bprintf b "TIMING STATS\n";
-  Printf.bprintf b "============\n";
-  Printf.bprintf b "Reads  : %f per second\n" desc_read;
-  Printf.bprintf b "Writes : %f per second\n" desc_write;
-  Printf.bprintf b "lock/unlock: %f per second\n" lock;
   Buffer.to_bytes b
   
   
