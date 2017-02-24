@@ -1648,6 +1648,7 @@ let diagnostic_measure_db_speed ~__context ~host =
 
   (* Measure the time taken to set/unset this host's description *)
   let measure fn =
+    Stats.reset "TODO";
     let start = Unix.gettimeofday () in
     let rec inner n =
       if Unix.gettimeofday () > start +. 10.0 then n else begin
