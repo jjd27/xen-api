@@ -56,29 +56,24 @@ let timings : (string, Normal_population.t) Hashtbl.t = Hashtbl.create 10
 let timings_m = Mutex.create ()
 
 let mean (p: Normal_population.t) = 
-  let sigma = Normal_population.sd p in
-  let mu = Normal_population.mean p in
-  exp (mu +. sigma *. sigma /. 2.)
+  Normal_population.mean p
 
 let sd (p: Normal_population.t) = 
-  let sigma = Normal_population.sd p in
-  let mu = Normal_population.mean p in
-  let v = (exp(sigma *. sigma) -. 1.) *. (exp (2. *. mu +. sigma *. sigma)) in
-  sqrt v
+  Normal_population.sd p
 
 let string_of (p: Normal_population.t) = 
-  Printf.sprintf "%f [sd = %f] n = %d" (mean p) (sd p) p.Normal_population.n
+  Printf.sprintf "%f [sd = %f] n = %d total = %f" (mean p) (sd p) p.Normal_population.n ((mean p) *. (float_of_int p.Normal_population.n))
 
 let sample (name: string) (x: float) : unit = 
   (* Use the lognormal distribution: *)
-  let x' = log x in
+(*  let x' = log x in*)
   Mutex.execute timings_m
     (fun () ->
        let p = 
 	 if Hashtbl.mem timings name 
 	 then Hashtbl.find timings name 
 	 else Normal_population.empty in
-       let p' = Normal_population.sample p x' in
+       let p' = Normal_population.sample p x in
        Hashtbl.replace timings name p';
 (*       debug "Population %s time = %f mean = %s" name x (string_of p'); *)
        )

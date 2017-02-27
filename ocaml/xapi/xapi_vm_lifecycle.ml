@@ -448,59 +448,73 @@ let update_allowed_operations ~__context ~self =
     the power state, allowed_operations field etc.  Current-operations won't be
     cleaned *)
 let force_state_reset_keep_current_operations ~__context ~self ~value:state =
+	Stats.time_this "diagnostics: fsrkco 1" (fun () ->
 	if state = `Halted then begin
 		(* mark all devices as disconnected *)
+		Stats.time_this "diagnostics: fsrkco 1.1" (fun () ->
 		List.iter 
 			(fun vbd ->
 				 Db.VBD.set_currently_attached ~__context ~self:vbd ~value:false;
 				 Db.VBD.set_reserved ~__context ~self:vbd ~value:false;
 				 Xapi_vbd_helpers.clear_current_operations ~__context ~self:vbd)
-			(Db.VM.get_VBDs ~__context ~self);
+			(Db.VM.get_VBDs ~__context ~self));
+		Stats.time_this "diagnostics: fsrkco 1.2" (fun () ->
 		List.iter 
 			(fun vif ->
 				 Db.VIF.set_currently_attached ~__context ~self:vif ~value:false;
 				 Db.VIF.set_reserved ~__context ~self:vif ~value:false;
 				 Xapi_vif_helpers.clear_current_operations ~__context ~self:vif)
-			(Db.VM.get_VIFs ~__context ~self);
+			(Db.VM.get_VIFs ~__context ~self));
+		Stats.time_this "diagnostics: fsrkco 1.3" (fun () ->
 		List.iter 
 			(fun vgpu ->
 				Db.VGPU.set_currently_attached ~__context ~self:vgpu ~value:false;
 				Db.VGPU.set_resident_on ~__context ~self:vgpu ~value:Ref.null;
 				Db.VGPU.set_scheduled_to_be_resident_on
 					~__context ~self:vgpu ~value:Ref.null)
-			(Db.VM.get_VGPUs ~__context ~self);
+			(Db.VM.get_VGPUs ~__context ~self));
+		Stats.time_this "diagnostics: fsrkco 1.4" (fun () ->
 		List.iter
 			(fun pci ->
 				Db.PCI.remove_attached_VMs ~__context ~self:pci ~value:self)
-			(Db.VM.get_attached_PCIs ~__context ~self);
+			(Db.VM.get_attached_PCIs ~__context ~self));
 		(* The following should not be necessary if many-to-many relations in the DB
 		 * work properly. People have reported issues that may indicate that this is
 		 * not the case, but we have not yet found the root cause. Therefore, the
 		 * following code is there "just to be sure".
 		 *)
-		List.iter
-			(fun pci ->
-				if List.mem self (Db.PCI.get_attached_VMs ~__context ~self:pci) then
-					Db.PCI.remove_attached_VMs ~__context ~self:pci ~value:self
+		Stats.time_this "diagnostics: fsrkco 1.5" (fun () ->
+		let recs = Stats.time_this "diagnostics: fsrkco 1.5.1" (fun () -> Db.PCI.get_internal_records_where ~__context ~expr:Db_filter_types.True) in
+		Stats.time_this "diagnostics: fsrkco 1.5.2" (fun () -> List.iter
+			(fun (pci_ref, pci) ->
+				if List.mem self (pci.Db_actions.pCI_attached_VMs) then
+					Db.PCI.remove_attached_VMs ~__context ~self:pci_ref ~value:self
 			)
-			(Db.PCI.get_all ~__context);
-	end;
+			recs));
+	end
+	);
 
+	Stats.time_this "diagnostics: fsrkco 2" (fun () ->
 	if state = `Halted || state = `Suspended then begin
 		Db.VM.set_resident_on ~__context ~self ~value:Ref.null;
 		(* make sure we aren't reserving any memory for this VM *)
 		Db.VM.set_scheduled_to_be_resident_on ~__context ~self ~value:Ref.null;
 		Db.VM.set_domid ~__context ~self ~value:(-1L)
-	end;
+	end
+	);
 
+(*
 	if state = `Halted then begin
 		(* archive the rrd for this vm *)
 		let vm_uuid = Db.VM.get_uuid ~__context ~self in
 		Rrdd.archive_rrd ~vm_uuid ~remote_address:(try Some (Pool_role.get_master_address ()) with _ -> None)
 	end;
+*)
 
-	Db.VM.set_power_state ~__context ~self ~value:state;
-	update_allowed_operations ~__context ~self
+	Stats.time_this "diagnostics: fsrkco 3" (fun () ->
+	Db.VM.set_power_state ~__context ~self ~value:state
+	)
+	(*update_allowed_operations ~__context ~self*)
 
 (** Called on new VMs (clones, imports) and on server start to manually refresh
     the power state, allowed_operations field etc.  Clean current-operations

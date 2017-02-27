@@ -1114,7 +1114,17 @@ end
 
 let interesting_stats = [
 	"diagnostic: Db.Host.get_name_description"; "diagnostic: Db.Host.set_name_description";
-	"diagnostic: Db_rpc_client_v1.read_field"; "diagnostic: Db_rpc_client_v1.write_field";
+	"diagnostic: Db_rpc_client_v1.read_field"; "diagnostic: Db_rpc_client_v1.write_field"; "diagnostic: Db_rpc_client_v1.read_records_where";
+	"diagnostic: unmarshall_read_records_where_response"; "diagnostic: marshall_read_records_where_response";
+	"diagnostic: do_remote_call_XXX";
+	"diagnostic: do_remote_call_XXX.marshall_args";
+	"diagnostic: do_remote_call_XXX.XMLRPC.To.array";
+	"diagnostic: do_remote_call_XXX.Xml.to_string";
+	"diagnostic: do_remote_call_XXX.RPC.rpc";
+	"diagnostic: do_remote_call_XXX.Xml.parse_string";
+	"diagnostic: do_remote_call_XXX.Xml.parse_bigbuffer";
+	"diagnostic: do_remote_call_XXX.XMLRPC.From.string";
+	"diagnostic: do_remote_call_XXX.unmarshall_resp";
 	"diagnostic: RPC.rpc";
 	"diagnostic: Db_lock.with_lock"; "diagnostic: do_db_xml_rpc_persistent_with_reopen";
 	"diagnostic: with_http request";
@@ -1125,5 +1135,15 @@ let interesting_stats = [
 	"diagnostic: Xml.to_bigbuffer";
 	"diagnostic: Http_svr.response_fct";
 	"diagnostic: Xapi_vm_lifecycle.force_state_reset_keep_current_operations";
+	"diagnostics: fsrkco 1";
+	"diagnostics: fsrkco 1.1";
+	"diagnostics: fsrkco 1.2";
+	"diagnostics: fsrkco 1.3";
+	"diagnostics: fsrkco 1.4";
+	"diagnostics: fsrkco 1.5";
+	"diagnostics: fsrkco 1.5.1";
+	"diagnostics: fsrkco 1.5.2";
+	"diagnostics: fsrkco 2";
+	"diagnostics: fsrkco 3";
 ]
 
