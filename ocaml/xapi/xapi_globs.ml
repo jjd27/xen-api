@@ -1124,5 +1124,6 @@ let interesting_stats = [
 	"diagnostic: DBCacheRemoteListener.process_xmlrpc";
 	"diagnostic: Xml.to_bigbuffer";
 	"diagnostic: Http_svr.response_fct";
+	"diagnostic: Xapi_vm_lifecycle.force_state_reset_keep_current_operations";
 ]
 

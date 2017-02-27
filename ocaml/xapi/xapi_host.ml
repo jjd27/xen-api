@@ -1667,17 +1667,62 @@ let diagnostic_measure_db_speed ~__context ~host =
     debug "after print"
   in
 
-  let desc_before = Db.Host.get_name_description ~__context ~self:host in
+  let add_pci_devices () =
+    (* Because having lots of PCI devices slows down force_state_reset *)
+    let all = Db.PCI.get_all_records ~__context in
+    if List.length all > 100 then () else
+    match all with
+    | (pci_ref, pci)::_ ->
+        let rec inner n =
+          if n = 0 then () else
+          begin
+          let p = Ref.make () in
+          let uuid = Uuid.to_string (Uuid.make_uuid ()) in
+          Db.PCI.create ~__context ~ref:p ~uuid
+            ~class_id:"0300"
+            ~class_name:(pci.API.pCI_class_name)
+            ~vendor_id:"1002"
+            ~vendor_name:(pci.API.pCI_vendor_name)
+            ~device_id:"515e"
+            ~device_name:(pci.API.pCI_device_name)
+            ~host:(pci.API.pCI_host)
+            ~pci_id:(pci.API.pCI_pci_id)
+            ~functions:1L ~dependencies:[] ~other_config:["fakenews", "true"]
+            ~subsystem_vendor_id:"103c"
+            ~subsystem_vendor_name:(pci.API.pCI_subsystem_vendor_name)
+            ~subsystem_device_id:"31fb"
+            ~subsystem_device_name:(pci.API.pCI_subsystem_device_name);
+          inner (n-1)
+          end
+        in inner 100
+    | [] -> ()
+  in
 
   Printf.bprintf b "TIMING STATS\n";
   Printf.bprintf b "============\n";
+(*
+  let desc_before = Db.Host.get_name_description ~__context ~self:host in
   measure "reads" (fun () -> Stats.time_this "diagnostic: Db.Host.get_name_description" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host)));
   measure "writes" (fun () -> Stats.time_this "diagnostic: Db.Host.set_name_description" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))));
-
   Db.Host.set_name_description ~__context ~self:host ~value:desc_before;
+*)
+  
+  begin
+    match Xapi_fist.nominated_vm () with
+    | Some label ->
+        begin
+          match Db.VM.get_by_name_label ~__context ~label with
+          | [vm] ->
+              add_pci_devices ();
+
+              let state = Db.VM.get_power_state ~__context ~self:vm in
+              if state == `Halted then
+                measure "state_reset" (fun () -> Stats.time_this "diagnostic: Xapi_vm_lifecycle.force_state_reset_keep_current_operations" (fun () -> ignore(Xapi_vm_lifecycle.force_state_reset_keep_current_operations ~__context ~self:vm ~value:state)));
+          | _ ->
+              Printf.bprintf b "Couldn't find unique VM '%s'" label
+        end
+    | None ->
+        Printf.bprintf b "Skipping force_state_reset because no VM specified"
+  end;
   
   Buffer.to_bytes b
-  
-  
-
-   
