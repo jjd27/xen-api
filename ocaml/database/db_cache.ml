@@ -28,6 +28,8 @@ module Remote_db : DB_ACCESS = Db_rpc_client_v2.Make(struct
 		ignore (Master_connection.start_master_connection_watchdog());
 		ignore (Master_connection.open_secure_connection())
 	let rpc request = Master_connection.execute_remote_fn request Constants.remote_db_access_uri_v2
+	let send request = Master_connection.send request Constants.remote_db_access_uri_v2
+	let recv () = Master_connection.recv ()
 end)
 
 let get = function
