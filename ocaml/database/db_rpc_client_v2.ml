@@ -14,8 +14,20 @@
 
 (** client-side for remote database access protocol v2 *)
 
+module D = Debug.Make(struct let name="jjd27" end)
+open D
+
 open Db_rpc_common_v2
 open Db_exn
+
+open Stdext.Threadext
+
+let map = Hashtbl.create 10 (* maps request id to (condvar to wake up, buffer containing response) *)
+
+let allow_concurrent_db_access = true
+
+(* Necessary because initialise is never called... *)
+let d_thread_running = ref false
 
 let process_response response f =
   match response with
@@ -35,14 +47,51 @@ let process_response response f =
   | Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
 
 module Make = functor(RPC: Db_interface.RPC) -> struct
+  let rec dispatcher_thread () =
+    d_thread_running := true;
+    begin
+    try
+      let response = RPC.recv () in
+      process_response response (fun id contents ->
+        if Hashtbl.mem map id then
+        let (cv, mutex, buf) = Hashtbl.find map id in
+        buf := Some contents;
+        Mutex.execute mutex (fun () -> Condition.broadcast cv)
+      )
+    with e ->
+      ((*debug "jjd27: suppressing error %s in dispatcher_thread" (Printexc.to_string e)*))
+    end;
+    dispatcher_thread ()
+
+  (* TODO ideally this is where we would start the dispatcher_thread, but initialise is never called! *)
   let initialise = RPC.initialise
+
   let rpc x =
     let id = Random.int64 Int64.max_int in
     let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int id]) in
-    let response = RPC.rpc request in
-                process_response response (fun id' contents ->
-      if id = id' then contents
-      else raise (Failure (Printf.sprintf "expected id %Ld, received %Ld" id id')))
+    if allow_concurrent_db_access then begin
+      (* TODO because initialise is never called *)
+      if not !d_thread_running then ignore (Thread.create dispatcher_thread ()); (* TODO mutex *)
+  
+      let buf = ref None in
+      let cv = Condition.create () in
+      let mutex = Mutex.create () in
+      Hashtbl.add map id (cv, mutex, buf);
+
+      Mutex.execute mutex (fun () ->
+        RPC.send request;
+        Condition.wait cv mutex;
+        Hashtbl.remove map id;
+        match !buf with
+        | Some buf -> buf
+        | None -> raise (Failure "woken up but no response")
+      )
+    end else begin
+      let response = RPC.rpc request in
+      process_response response (fun id' contents ->
+        if id = id' then contents
+        else raise (Failure (Printf.sprintf "expected id %Ld, received %Ld" id id')))
+    end
 
   let process (x: Request.t) =
     let y : Response.t = Response.t_of_rpc (rpc (Request.rpc_of_t x)) in

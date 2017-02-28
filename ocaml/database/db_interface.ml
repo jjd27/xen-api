@@ -24,6 +24,12 @@ module type RPC = sig
 
   (** [rpc request] transmits [request] and receives a response *)
   val rpc : string -> response
+
+  (** [send request] transmits [request] *)
+  val send : string -> unit
+
+  (** [recv ()] receives a response *)
+  val recv : unit -> response
 end
 
 (** dictionary of regular fields x dictionary of associated set_ref values *)
