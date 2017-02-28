@@ -14,21 +14,88 @@
 
 (** client-side for remote database access protocol v2 *)
 
+module D = Debug.Make(struct let name="jjd27" end)
+open D
+
 open Db_rpc_common_v2
 open Db_exn
 
-module Make = functor(RPC: Db_interface.RPC) -> struct
-	let initialise = RPC.initialise
-	let rpc x =
-		let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int (Random.int64 Int64.max_int)]) in
-		let response = RPC.rpc request in
+open Threadext
+
+let map = Hashtbl.create 10 (* maps request id to (condvar to wake up, buffer containing response) *)
+
+(* Necessary because initialise is never called... *)
+let d_thread_running = ref false
+
+let rec dispatcher_thread () =
+	d_thread_running := true;
+	begin
+	try
+		debug "jjd27: before Master_connection.recv...";
+		let response = Master_connection.recv () in
+		debug "jjd27: got response";
 		match response with
 		| Db_interface.String s -> begin
+			debug "jjd27: response = '%s'" s;
 			match Jsonrpc.of_string s with
-			| Rpc.Dict xs -> List.assoc "contents" xs
-			| _ -> raise (Failure "Expected dict with 'contents' and 'id'")
+			| Rpc.Dict xs ->
+				begin
+					debug "jjd27: dict, as hoped";
+					match List.assoc "id" xs with
+					| Rpc.Int id ->
+						debug "jjd27: response had id %Ld" id;
+						if Hashtbl.mem map id then
+						let (cv, buf) = Hashtbl.find map id in
+						buf := Some (List.assoc "contents" xs);
+						Condition.broadcast cv;
+					| _ ->
+						debug "jjd27: ID not int";
+						raise (Failure "couldn't find 'id' field")
+				end
+			| _ ->
+				debug "jjd27: not dict";
+				raise (Failure "Expected dict with 'contents' and 'id'")
 			end
 		| Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
+	with e ->
+		debug "jjd27: suppressing error %s in dispatcher_thread" (Printexc.to_string e)
+	end;
+	dispatcher_thread ()
+
+module Make = functor(RPC: Db_interface.RPC) -> struct
+	let initialise () =
+		debug "jjd27: RPC.initialise";
+		RPC.initialise ();
+		debug "jjd27: done RPC.initialise";
+		ignore (Thread.create dispatcher_thread ())
+
+	let rpc x =
+		(* TODO because initialise is never called *)
+		if not !d_thread_running then ignore (Thread.create dispatcher_thread ()); (* TODO mutex *)
+
+		let id = Random.int64 Int64.max_int in
+		debug "jjd27: generated id %Ld for request" id;
+		let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int id]) in
+		debug "jjd27: request is '%s'" request;
+		let host = Pool_role.get_master_address () in
+
+		let buf = ref None in
+		let cv = Condition.create () in
+		let mutex = Mutex.create () in
+		Hashtbl.add map id (cv, buf);
+
+		debug "jjd27: sending request to master...";
+		Master_connection.send ~host ~path:Constants.remote_db_access_uri_v2 request;
+		debug "jjd27: sent request to master";
+		Mutex.execute mutex (fun () ->
+			debug "jjd27: before wait";
+			Condition.wait cv mutex;
+			debug "jjd27: woken up";
+			Hashtbl.remove map id;
+			match !buf with
+			| Some buf -> buf
+			| None -> raise (Failure "woken up but no response")
+		)
 
 	let process (x: Request.t) = 
 		let y : Response.t = Response.t_of_rpc (rpc (Request.rpc_of_t x)) in

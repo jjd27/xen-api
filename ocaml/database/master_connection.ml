@@ -119,7 +119,9 @@ exception Goto_handler
 let on_database_connection_established = ref (fun () -> ())
 
 let open_secure_connection () =
+  debug "jjd27: open_secure_connection";
   let host = Pool_role.get_master_address () in
+(*
   let port = !Xapi_globs.https_port in
   let st_proc = Stunnel.connect ~use_fork_exec_helper:true
 	  ~extended_diagnosis:true
@@ -135,6 +137,24 @@ let open_secure_connection () =
 	  let () = try Stunnel.disconnect st_proc with _ -> () in
 	  raise Goto_handler
   end
+*)
+  let port = Xapi_globs.http_port in
+  let socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  debug "jjd27: opened socket";
+  Unix.connect socket (Unix.ADDR_INET (Unix.inet_addr_of_string host, port));
+  debug "jjd27: connected socket to %s:%d" host port;
+  my_connection := Some {Stunnel.fd = socket; pid=Stunnel.Nopid; host=host; port=port; connected_time=0.; unique_id=None; verified=true; legacy=false; logfile="" }
+
+(*
+type t = { mutable pid: pid; fd: Unix.file_descr; host: string; port: int;
+           connected_time: float;
+           unique_id: int option;
+           mutable logfile: string;
+           verified: bool;
+           legacy: bool;
+         }
+*)
+
 
 (* Do a db xml_rpc request, catching exception and trying to reopen the connection if it
    fails *)
@@ -146,6 +166,62 @@ let connection_timeout = ref !Xapi_globs.master_connection_default_timeout
 let restart_on_connection_timeout = ref true
 
 exception Content_length_required
+
+let send ~host ~path (req: string) : unit =
+  let write_ok = ref false in
+  while (not !write_ok)
+  do
+    begin
+	let req_string = req in
+	let length = String.length req_string in
+	if length > Xapi_globs.http_limit_max_rpc_size
+	then raise Http_svr.Client_requested_size_over_limit;
+	(* The pool_secret is added here and checked by the Xapi_http.add_handler RBAC code. *)
+	let open Xmlrpc_client in
+	let request = xmlrpc 
+		~version:"1.1" ~frame:true ~keep_alive:true
+		~length:(Int64.of_int length)
+		~cookie:["pool_secret", !Xapi_globs.pool_secret] ~body:req path in
+	debug "jjd27: about to check my_connection";
+	match !my_connection with
+	  None ->
+		debug "jjd27: no connection";
+		open_secure_connection ();
+		raise Goto_handler
+	| (Some stunnel_proc) ->
+	    let fd = stunnel_proc.Stunnel.fd in
+	    debug "jjd27: about to use stunnel fd";
+	    with_timestamp (fun () ->
+		Stats.time_this "diagnostic: with_http request" (fun () -> Http_client.http_rpc_send_query fd request)
+            );
+            write_ok := true
+    end
+  done
+
+let recv () : Db_interface.response = 
+	debug "jjd27: in Master_connection.recv";
+	match !my_connection with
+	  None ->
+		debug "jjd27: no connection";
+		open_secure_connection ();
+		raise Goto_handler
+	| (Some stunnel_proc) ->
+		debug "jjd27: getting fd";
+		let fd = stunnel_proc.Stunnel.fd in
+		debug "jjd27: calling Http_client.http_rpc_recv_response...";
+		let response = Http_client.http_rpc_recv_response (*use_fastpath:*)false "error_msg" fd in
+		debug "jjd27: got HTTP response";
+		match response.Http.Response.content_length with
+			| None -> raise Content_length_required
+			| Some l -> begin
+				debug "jjd27: length was %Ld" l;
+				if (Int64.to_int l) <= Sys.max_string_length then
+					Db_interface.String (Unixext.really_read_string fd (Int64.to_int l))
+				else
+					let buf = Bigbuffer.make () in
+					Unixext.really_read_bigbuffer fd buf l;
+					Db_interface.Bigbuf buf
+			end
 
 let do_db_xml_rpc_persistent_with_reopen ~host ~path (req: string) : Db_interface.response = 
   let time_call_started = Unix.gettimeofday() in
