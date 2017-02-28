@@ -20,8 +20,12 @@ open Db_exn
 module Make = functor(RPC: Db_interface.RPC) -> struct
 	let initialise = RPC.initialise
 	let rpc x =
-		match RPC.rpc (Jsonrpc.to_string x) with
-		| Db_interface.String s -> Jsonrpc.of_string s
+		match RPC.rpc (Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int (Random.int64 Int64.max_int)])) with
+		| Db_interface.String s -> begin
+			match Jsonrpc.of_string s with
+			| Rpc.Dict xs -> List.assoc "contents" xs
+			| _ -> raise (Failure "Expected dict with 'contents' and 'id'")
+			end
 		| Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
 
 	let process (x: Request.t) = 
