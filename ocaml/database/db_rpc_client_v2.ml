@@ -17,25 +17,32 @@
 open Db_rpc_common_v2
 open Db_exn
 
+let process_response response f =
+  match response with
+  | Db_interface.String s -> begin
+    match Jsonrpc.of_string s with
+    | Rpc.Dict xs ->
+      begin
+        match List.assoc "id" xs with
+        | Rpc.Int id ->
+          let contents = List.assoc "contents" xs in
+          f id contents
+        | _ -> raise (Failure "couldn't find 'id' field")
+      end
+    | _ ->
+      raise (Failure "Expected dict with 'contents' and 'id'")
+    end
+  | Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
+
 module Make = functor(RPC: Db_interface.RPC) -> struct
   let initialise = RPC.initialise
   let rpc x =
     let id = Random.int64 Int64.max_int in
-    match RPC.rpc (Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int id])) with
-    | Db_interface.String s -> begin
-      match Jsonrpc.of_string s with
-      | Rpc.Dict xs ->
-        begin
-          match List.assoc "id" xs with
-          | Rpc.Int id' ->
-            if id = id' then List.assoc "contents" xs
-            else raise (Failure (Printf.sprintf "expected id %Ld, received %Ld" id id'))
-          | _ -> raise (Failure "couldn't find 'id' field")
-        end
-      | _ ->
-        raise (Failure "Expected dict with 'contents' and 'id'")
-      end
-    | Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
+    let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int id]) in
+    let response = RPC.rpc request in
+                process_response response (fun id' contents ->
+      if id = id' then contents
+      else raise (Failure (Printf.sprintf "expected id %Ld, received %Ld" id id')))
 
   let process (x: Request.t) =
     let y : Response.t = Response.t_of_rpc (rpc (Request.rpc_of_t x)) in
