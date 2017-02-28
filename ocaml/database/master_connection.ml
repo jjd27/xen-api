@@ -202,7 +202,7 @@ let recv () : Db_interface.response =
 		raise Goto_handler
 	| (Some stunnel_proc) ->
 		let fd = stunnel_proc.Stunnel.fd in
-		let response = Http_client.http_rpc_recv_response (*use_fastpath:*)false "error_msg" fd in
+		let response = Http_client.http_rpc_recv_response (*use_fastpath:*)true "error_msg" fd in
 		match response.Http.Response.content_length with
 			| None -> raise Content_length_required
 			| Some l -> begin
