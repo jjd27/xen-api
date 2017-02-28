@@ -20,7 +20,9 @@ open Db_exn
 module Make = functor(RPC: Db_interface.RPC) -> struct
 	let initialise = RPC.initialise
 	let rpc x =
-		match RPC.rpc (Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int (Random.int64 Int64.max_int)])) with
+		let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int (Random.int64 Int64.max_int)]) in
+		let response = RPC.rpc request in
+		match response with
 		| Db_interface.String s -> begin
 			match Jsonrpc.of_string s with
 			| Rpc.Dict xs -> List.assoc "contents" xs
