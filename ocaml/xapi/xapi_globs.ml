@@ -1114,4 +1114,6 @@ end
 
 let interesting_stats = [
 	"diagnostic: Db.Host.get_name_description"; "diagnostic: Db.Host.set_name_description";
+	"diagnostic: Db.VM.get_all_records";
+	"diagnostic: Db.VM.get_all_records parallel";
 ]
