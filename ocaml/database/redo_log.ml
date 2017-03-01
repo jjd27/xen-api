@@ -406,8 +406,25 @@ let action_write_db marker generation_count write_fn sock datasockpath =
     else raise (RedoLogFailure error)
   | e -> raise (CommunicationsProblem ("unrecognised writedb response ["^e^"]"))
 
+let mysleep sec =
+  ignore (Unix.select [] [] [] sec)
+
+let fistpoint_read name =
+        try
+                Some (Unixext.string_of_file ("/tmp/fist_" ^ name))
+        with _ -> None
+
+let redo_log_delay () = fistpoint_read "redo_log_delay"
+
+let get_delay () =
+  match redo_log_delay () with
+  | Some str -> float_of_string str
+  | None -> 0.
+
 let action_write_delta marker generation_count data flush_db_fn sock datasockpath =
-  R.debug "Performing writedelta (generation %Ld)" generation_count;
+  let delay = get_delay () in
+  R.debug "Performing writedelta (generation %Ld) (delay = %f s)" generation_count delay;
+  mysleep delay;
   (* Compute desired response time *)
   let latest_response_time = get_latest_response_time !Xapi_globs.redo_log_max_block_time_writedelta in
   (* Write *)
