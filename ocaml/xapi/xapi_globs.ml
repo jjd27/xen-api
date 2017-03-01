@@ -1145,4 +1145,6 @@ let interesting_stats = [
 	"diagnostics: fsrkco 1.5.2";
 	"diagnostics: fsrkco 2";
 	"diagnostics: fsrkco 3";
+	"diagnostic: Db.VM.get_all_records";
+	"diagnostic: Db.VM.get_all_records parallel";
 ]
