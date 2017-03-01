@@ -406,8 +406,12 @@ let action_write_db marker generation_count write_fn sock datasockpath =
     else raise (RedoLogFailure error)
   | e -> raise (CommunicationsProblem ("unrecognised writedb response ["^e^"]"))
 
+let mysleep sec =
+  ignore (Unix.select [] [] [] sec)
+
 let action_write_delta marker generation_count data flush_db_fn sock datasockpath =
   R.debug "Performing writedelta (generation %Ld)" generation_count;
+  mysleep 0.050;
   (* Compute desired response time *)
   let latest_response_time = get_latest_response_time !Xapi_globs.redo_log_max_block_time_writedelta in
   (* Write *)
