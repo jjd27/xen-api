@@ -1730,5 +1730,14 @@ let diagnostic_measure_db_speed ~__context ~host =
 *)
 
   measure "sequential" (fun () -> Stats.time_this "diagnostic: Db.VM.get_all_records" (fun () -> Db.VM.get_all_records ~__context));
+  measure "parallel" (fun () ->
+    let t = Thread.create (fun () -> Stats.time_this "diagnostic: Db.VM.get_all_records parallel" (fun () -> Db.VM.get_all_records ~__context)) in
+    let rec start n =
+      if n=0 then [] else
+      let thread = t () in
+      thread :: (start (n-1))
+    in
+    let ts = start 10 in
+    List.iter Thread.join ts);
   
   Buffer.to_bytes b
