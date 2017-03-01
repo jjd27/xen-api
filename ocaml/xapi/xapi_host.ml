@@ -1702,12 +1702,13 @@ let diagnostic_measure_db_speed ~__context ~host =
 
   Printf.bprintf b "TIMING STATS\n";
   Printf.bprintf b "============\n";
-(*
+
   let desc_before = Db.Host.get_name_description ~__context ~self:host in
-  measure "reads" (fun () -> Stats.time_this "diagnostic: Db.Host.get_name_description" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host)));
-  measure "writes" (fun () -> Stats.time_this "diagnostic: Db.Host.set_name_description" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))));
+  let t_read = Thread.create (fun () -> measure "reads" (fun () -> Stats.time_this "diagnostic: Db.Host.get_name_description" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host)))) () in
+  let t_write = Thread.create (fun () -> measure "writes" (fun () -> Stats.time_this "diagnostic: Db.Host.set_name_description" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))))) () in
+  Thread.join t_read;
+  Thread.join t_write;
   Db.Host.set_name_description ~__context ~self:host ~value:desc_before;
-*)
   
 (*
   begin
@@ -1729,15 +1730,4 @@ let diagnostic_measure_db_speed ~__context ~host =
   end;
 *)
 
-  measure "sequential" (fun () -> Stats.time_this "diagnostic: Db.VM.get_all_records" (fun () -> Db.VM.get_all_records ~__context));
-  measure "parallel" (fun () ->
-    let t = Thread.create (fun () -> Stats.time_this "diagnostic: Db.VM.get_all_records parallel" (fun () -> Db.VM.get_all_records ~__context)) in
-    let rec start n =
-      if n=0 then [] else
-      let thread = t () in
-      thread :: (start (n-1))
-    in
-    let ts = start 10 in
-    List.iter Thread.join ts);
-  
   Buffer.to_bytes b
