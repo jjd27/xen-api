@@ -167,6 +167,8 @@ let restart_on_connection_timeout = ref true
 
 exception Content_length_required
 
+let send_m = Mutex.create ()
+
 let send ~host ~path (req: string) : unit =
   let write_ok = ref false in
   while (not !write_ok)
@@ -189,7 +191,10 @@ let send ~host ~path (req: string) : unit =
 	| (Some stunnel_proc) ->
 	    let fd = stunnel_proc.Stunnel.fd in
 	    with_timestamp (fun () ->
-		Stats.time_this "diagnostic: with_http request" (fun () -> Http_client.http_rpc_send_query fd request)
+		(* Only one thing at a time writing to the socket *)
+		Mutex.execute send_m (fun () ->
+			Stats.time_this "diagnostic: with_http request" (fun () -> Http_client.http_rpc_send_query fd request)
+		)
             );
             write_ok := true
     end
