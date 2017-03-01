@@ -24,32 +24,39 @@ open Threadext
 
 let map = Hashtbl.create 10 (* maps request id to (condvar to wake up, buffer containing response) *)
 
+let allow_concurrent_db_access = true
+
 (* Necessary because initialise is never called... *)
 let d_thread_running = ref false
+
+let process_response response f =
+	match response with
+	| Db_interface.String s -> begin
+		match Jsonrpc.of_string s with
+		| Rpc.Dict xs ->
+			begin
+				match List.assoc "id" xs with
+				| Rpc.Int id ->
+					let contents = List.assoc "contents" xs in
+					f id contents
+				| _ -> raise (Failure "couldn't find 'id' field")
+			end
+		| _ ->
+			raise (Failure "Expected dict with 'contents' and 'id'")
+		end
+	| Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
 
 let rec dispatcher_thread () =
 	d_thread_running := true;
 	begin
 	try
 		let response = Master_connection.recv () in
-		match response with
-		| Db_interface.String s -> begin
-			match Jsonrpc.of_string s with
-			| Rpc.Dict xs ->
-				begin
-					match List.assoc "id" xs with
-					| Rpc.Int id ->
-						if Hashtbl.mem map id then
-						let (cv, buf) = Hashtbl.find map id in
-						buf := Some (List.assoc "contents" xs);
-						Condition.broadcast cv;
-					| _ ->
-						raise (Failure "couldn't find 'id' field")
-				end
-			| _ ->
-				raise (Failure "Expected dict with 'contents' and 'id'")
-			end
-		| Db_interface.Bigbuf b -> raise (Failure "Response too large - cannot convert bigbuffer to json!")
+		process_response response (fun id contents ->
+			if Hashtbl.mem map id then
+			let (cv, buf) = Hashtbl.find map id in
+			buf := Some contents;
+			Condition.broadcast cv
+		)
 	with e ->
 		((*debug "jjd27: suppressing error %s in dispatcher_thread" (Printexc.to_string e)*))
 	end;
@@ -58,29 +65,38 @@ let rec dispatcher_thread () =
 module Make = functor(RPC: Db_interface.RPC) -> struct
 	let initialise () =
 		RPC.initialise ();
-		ignore (Thread.create dispatcher_thread ())
+		if allow_concurrent_db_access then begin
+			debug "jjd27: allowing concurrent DB access";
+			ignore (Thread.create dispatcher_thread ())
+		end else
+			debug "jjd27: only allowing sequential DB access"
 
 	let rpc x =
-		(* TODO because initialise is never called *)
-		if not !d_thread_running then ignore (Thread.create dispatcher_thread ()); (* TODO mutex *)
-
 		let id = Random.int64 Int64.max_int in
 		let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int id]) in
-		let host = Pool_role.get_master_address () in
+		if allow_concurrent_db_access then begin
+			(* TODO because initialise is never called *)
+			if not !d_thread_running then ignore (Thread.create dispatcher_thread ()); (* TODO mutex *)
+	
+			let host = Pool_role.get_master_address () in
+	
+			let buf = ref None in
+			let cv = Condition.create () in
+			let mutex = Mutex.create () in
+			Hashtbl.add map id (cv, buf);
 
-		let buf = ref None in
-		let cv = Condition.create () in
-		let mutex = Mutex.create () in
-		Hashtbl.add map id (cv, buf);
-
-		Master_connection.send ~host ~path:Constants.remote_db_access_uri_v2 request;
-		Mutex.execute mutex (fun () ->
-			Condition.wait cv mutex;
-			Hashtbl.remove map id;
-			match !buf with
-			| Some buf -> buf
-			| None -> raise (Failure "woken up but no response")
-		)
+			Master_connection.send ~host ~path:Constants.remote_db_access_uri_v2 request;
+			Mutex.execute mutex (fun () ->
+				Condition.wait cv mutex;
+				Hashtbl.remove map id;
+				match !buf with
+				| Some buf -> buf
+				| None -> raise (Failure "woken up but no response")
+			)
+		end else begin
+			let response = RPC.rpc request in
+			process_response response (fun _ contents -> contents)
+		end
 
 	let process (x: Request.t) = 
 		let y : Response.t = Response.t_of_rpc (rpc (Request.rpc_of_t x)) in
