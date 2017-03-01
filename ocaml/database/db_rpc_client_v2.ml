@@ -24,7 +24,7 @@ open Threadext
 
 let map = Hashtbl.create 10 (* maps request id to (condvar to wake up, buffer containing response) *)
 
-let allow_concurrent_db_access = true
+let allow_concurrent_db_access = false
 
 (* Necessary because initialise is never called... *)
 let d_thread_running = ref false
