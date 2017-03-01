@@ -1663,7 +1663,7 @@ let diagnostic_measure_db_speed ~__context ~host =
     debug "before Stats.summarise";
     let all_stats = Stats.summarise () in
     debug "after Stats.summarise";
-    List.iter (fun s -> Printf.bprintf b "%s  : %s  : %s\n" name s (try List.assoc s all_stats with Not_found -> "??")) Xapi_globs.interesting_stats;
+    List.iter (fun s -> try Printf.bprintf b "%s  : %s  : %s\n" name s (List.assoc s all_stats) with Not_found -> ()) Xapi_globs.interesting_stats;
     debug "after print"
   in
 
