@@ -1667,6 +1667,7 @@ let diagnostic_measure_db_speed ~__context ~host =
     debug "after print"
   in
 
+(*
   let add_pci_devices () =
     (* Because having lots of PCI devices slows down force_state_reset *)
     let all = Db.PCI.get_all_records ~__context in
@@ -1697,6 +1698,7 @@ let diagnostic_measure_db_speed ~__context ~host =
         in inner 100
     | [] -> ()
   in
+*)
 
   Printf.bprintf b "TIMING STATS\n";
   Printf.bprintf b "============\n";
@@ -1707,6 +1709,7 @@ let diagnostic_measure_db_speed ~__context ~host =
   Db.Host.set_name_description ~__context ~self:host ~value:desc_before;
 *)
   
+(*
   begin
     match Xapi_fist.nominated_vm () with
     | Some label ->
@@ -1724,5 +1727,8 @@ let diagnostic_measure_db_speed ~__context ~host =
     | None ->
         Printf.bprintf b "Skipping force_state_reset because no VM specified"
   end;
+*)
+
+  measure "sequential" (fun () -> Stats.time_this "diagnostic: Db.VM.get_all_records" (fun () -> Db.VM.get_all_records ~__context));
   
   Buffer.to_bytes b
