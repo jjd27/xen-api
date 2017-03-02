@@ -223,9 +223,12 @@ let consider_enabling_host_nolock ~__context =
 	let ha_enabled = try bool_of_string (Localdb.get Constants.ha_armed) with _ -> false in
 	let localhost = Helpers.get_localhost ~__context in
 	let pbds = Db.Host.get_PBDs ~__context ~self:localhost in
+	debug "Xapi_host_helpers.consider_enabling_host_nolock: got %d pbds" (List.length pbds);
 	Storage_access.resynchronise_pbds ~__context ~pbds;
+	debug "Xapi_host_helpers.consider_enabling_host_nolock: finished resyncing";
 	let all_pbds_ok = List.fold_left (&&) true (List.map (fun self -> Db.PBD.get_currently_attached ~__context ~self) pbds) in
 
+	debug "Xapi_host_helpers.consider_enabling_host_nolock: %b && (not %b || %b)" (not !user_requested_host_disable) ha_enabled all_pbds_ok;
 	if not !user_requested_host_disable && (not ha_enabled || all_pbds_ok) then begin
 		(* If we were in the middle of a shutdown or reboot with HA enabled but somehow we failed
 		   and xapi restarted, make sure we don't automatically re-enable ourselves. This is to avoid
@@ -252,6 +255,7 @@ let consider_enabling_host_nolock ~__context =
 		if Db.Host.get_enabled ~__context ~self:localhost && (Db.Pool.get_ha_enabled ~__context ~self:pool)
 		then Helpers.call_api_functions ~__context (fun rpc session_id -> Client.Client.Pool.ha_schedule_plan_recomputation rpc session_id)
 	end;
+	debug "Xapi_host_helpers.consider_enabling_host_nolock: signal_startup_complete";
 	signal_startup_complete ()
 
 (** Attempt to minimise the number of times we call consider_enabling_host_nolock *)
