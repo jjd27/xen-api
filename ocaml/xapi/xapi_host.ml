@@ -1650,21 +1650,18 @@ let diagnostic_measure_db_speed ~__context ~host =
 
   (* Measure the time taken to set/unset this host's description *)
   let measure name fn =
-    List.iter (fun s -> debug "resetting %s" s; Stats.reset s) Xapi_globs.interesting_stats;
+    debug "starting %s thread" name;
     let start = Unix.gettimeofday () in
+    debug "starting %s thread at %f" name start;
     let rec inner n =
       if Unix.gettimeofday () > start +. 10.0 then n else begin
         fn ();
+	Thread.yield ();
         inner (n+1)
       end
     in
     let result = float_of_int (inner 0) /. 10.0 in
-    Printf.bprintf b "%s  : %f per second\n" name result;
-    debug "before Stats.summarise";
-    let all_stats = Stats.summarise () in
-    debug "after Stats.summarise";
-    List.iter (fun s -> try Printf.bprintf b "%s  : %s  : %s\n" name s (List.assoc s all_stats) with Not_found -> ()) Xapi_globs.interesting_stats;
-    debug "after print"
+    Printf.bprintf b "%s  : %f per second\n" name result
   in
 
 (*
@@ -1704,10 +1701,23 @@ let diagnostic_measure_db_speed ~__context ~host =
   Printf.bprintf b "============\n";
 
   let desc_before = Db.Host.get_name_description ~__context ~self:host in
-  let t_read = Thread.create (fun () -> measure "reads" (fun () -> Stats.time_this "diagnostic: Db.Host.get_name_description" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host)))) () in
-  let t_write = Thread.create (fun () -> measure "writes" (fun () -> Stats.time_this "diagnostic: Db.Host.set_name_description" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))))) () in
+  List.iter (fun s -> debug "resetting %s" s; Stats.reset s) Xapi_globs.interesting_stats;
+
+  let t_read = Thread.create (fun () -> debug "before measure reads thread"; measure "reads" (fun () -> Stats.time_this "diagnostic: Db.Host.get_name_description" (fun () -> ignore(Db.Host.get_memory_overhead ~__context ~self:host)))) () in
+  debug "Started read thread";
+  let t_write = Thread.create (fun () -> debug "before measure writes thread"; measure "writes" (fun () -> Stats.time_this "diagnostic: Db.Host.set_name_description" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))))) () in
+  debug "Started write thread";
   Thread.join t_read;
+  debug "Read thread finished";
   Thread.join t_write;
+  debug "Write thread finished";
+
+  debug "before Stats.summarise";
+  let all_stats = Stats.summarise () in
+  debug "after Stats.summarise";
+  List.iter (fun s -> try Printf.bprintf b "%s  : %s\n" s (List.assoc s all_stats) with Not_found -> ()) Xapi_globs.interesting_stats;
+  debug "after print";
+
   Db.Host.set_name_description ~__context ~self:host ~value:desc_before;
   
 (*
