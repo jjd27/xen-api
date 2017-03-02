@@ -17,6 +17,8 @@
 open Db_rpc_common_v2
 open Db_exn
 
+open Stdext.Threadext
+
 (** Convert a marshalled Request Rpc.t into a marshalled Response Rpc.t *)
 let process_rpc (req: Rpc.t) =
   let module DB = (Db_cache_impl : Db_interface.DB_ACCESS) in
@@ -69,6 +71,8 @@ let process_rpc (req: Rpc.t) =
 
     )
 
+let response_m = Mutex.create ()
+
 let handler req bio _ =
   let fd = Buf_io.fd_of bio in (* fd only used for writing *)
   let body = Http_svr.read_body ~limit:Xapi_globs.http_limit_max_rpc_size req bio in
@@ -77,9 +81,11 @@ let handler req bio _ =
   | Rpc.Dict xs ->
     let id = List.assoc "id" xs in
     let request_rpc = List.assoc "contents" xs in
-    let reply_rpc = process_rpc request_rpc in
-    (* XXX: need to cope with > 16MiB responses *)
-    let response = Jsonrpc.to_string (Rpc.Dict ["contents", reply_rpc; "id", id]) in
-    Http_svr.response_str req fd response
+    ignore (Thread.create (fun () ->
+      let reply_rpc = process_rpc request_rpc in
+      (* XXX: need to cope with > 16MiB responses *)
+      let response = Jsonrpc.to_string (Rpc.Dict ["contents", reply_rpc; "id", id]) in
+      Mutex.execute response_m (fun () -> Http_svr.response_str req fd response)
+    ) ())
   | _ ->
     raise (Failure "expected Dict")
