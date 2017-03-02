@@ -208,6 +208,17 @@ let send ~host ~path (req: string) : unit =
   done
 
 let recv () : Db_interface.response = 
+  let time_call_started = Unix.gettimeofday() in
+  let result = ref (Db_interface.String "") in
+  let surpress_no_timeout_logs = ref false in
+  let backoff_delay = ref 2.0 in (* initial delay = 2s *)
+  let update_backoff_delay () =
+    backoff_delay := !backoff_delay *. 2.0;
+    if !backoff_delay < 2.0 then backoff_delay := 2.0 
+    else if !backoff_delay > 256.0 then backoff_delay := 256.0
+  in  
+    begin
+      try
 	match !my_connection with
 	  None ->
 		open_secure_connection ();
@@ -215,16 +226,78 @@ let recv () : Db_interface.response =
 	| (Some stunnel_proc) ->
 		let fd = stunnel_proc.Stunnel.fd in
 		let response = Http_client.http_rpc_recv_response (*use_fastpath:*)true "error_msg" fd in
-		match response.Http.Response.content_length with
+		let res = match response.Http.Response.content_length with
 			| None -> raise Content_length_required
 			| Some l -> begin
 				if (Int64.to_int l) <= Sys.max_string_length then
-					Db_interface.String (Unixext.really_read_string fd (Int64.to_int l))
+					let str = Unixext.really_read_string fd (Int64.to_int l) in
+					debug "jjd27: received response '%s'" str;
+					Db_interface.String str
 				else
 					let buf = Bigbuffer.make () in
 					Unixext.really_read_bigbuffer fd buf l;
 					Db_interface.Bigbuf buf
 			end
+		in
+		result := res (* yippeee! return and exit from while loop *)
+      with
+      | Http_svr.Client_requested_size_over_limit ->
+	error "Content length larger than known limit (%d)." Xapi_globs.http_limit_max_rpc_size;
+	debug "Re-raising exception to caller.";
+	raise Http_svr.Client_requested_size_over_limit
+      (* TODO: This http exception handler caused CA-36936 and can probably be removed now that there's backoff delay in the generic handler _ below *)
+      | Http_client.Http_error (http_code,err_msg) ->
+	  error "Received HTTP error %s (%s) from master. This suggests our master address is wrong. Sleeping for %.0fs and then restarting." http_code err_msg !Xapi_globs.permanent_master_failure_retry_interval;
+	  Thread.delay !Xapi_globs.permanent_master_failure_retry_interval;
+	  exit Xapi_globs.restart_return_code
+      |	e ->
+	  begin
+		  error "Caught %s" (Printexc.to_string e);
+	    (* RPC failed - there's no way we can recover from this so try reopening connection every 2s + backoff delay *)
+	    begin
+	      match !my_connection with
+		None -> ()
+	      | (Some st_proc) ->
+		  my_connection := None; (* don't want to try closing multiple times *)
+                  (try Unix.close st_proc.Stunnel.fd with _ -> debug "jjd27: close failed"; ())
+	    end;
+	    let time_sofar = Unix.gettimeofday() -. time_call_started in
+	    if !connection_timeout < 0. then
+	      begin
+		if not !surpress_no_timeout_logs then
+		  begin
+		    debug "Connection to master died. I will continue to retry indefinitely (supressing future logging of this message).";
+		    error "Connection to master died. I will continue to retry indefinitely (supressing future logging of this message).";
+		  end;
+		surpress_no_timeout_logs := true
+	      end
+	    else
+	      debug "Connection to master died: time taken so far in this call '%f'; will %s"
+		time_sofar (if !connection_timeout < 0.
+			    then "never timeout" 
+			    else Printf.sprintf "timeout after '%f'" !connection_timeout);
+	    if time_sofar > !connection_timeout && !connection_timeout >= 0. then
+	      begin
+		if !restart_on_connection_timeout then
+		  begin
+		    debug "Exceeded timeout for retrying master connection: restarting xapi";
+		    exit Xapi_globs.restart_return_code
+		  end
+		else
+		  begin
+		    debug "Exceeded timeout for retrying master connection: raising Cannot_connect_to_master";
+		    raise Cannot_connect_to_master
+		  end
+	      end;
+	    debug "Sleeping %f seconds before retrying master connection..." !backoff_delay;
+	    Thread.delay !backoff_delay;
+	    update_backoff_delay ();
+	    try
+	      open_secure_connection()
+	    with _ -> () (* oh well, maybe nextime... *)
+	  end
+     end;
+  !result
 
 let do_db_xml_rpc_persistent_with_reopen ~host ~path (req: string) : Db_interface.response = 
   let time_call_started = Unix.gettimeofday() in
