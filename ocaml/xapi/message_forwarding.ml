@@ -45,17 +45,17 @@ let info = Audit.debug
 
 (* Use HTTP 1.0, don't use the connection cache and don't pre-verify the connection *)
 let remote_rpc_no_retry context hostname (task_opt: API.ref_task option) xml =
+	debug "remote_rpc_no_retry";
 	let open Xmlrpc_client in
-	let transport = SSL(SSL.make ?task_id:(may Ref.string_of task_opt) (),
-	hostname, !Xapi_globs.https_port) in
+	let transport = TCP(hostname, Xapi_globs.http_port) in
 	let http = xmlrpc ?task_id:(may Ref.string_of task_opt) ~version:"1.0" "/" in
 	XMLRPC_protocol.rpc ~srcstr:"xapi" ~dststr:"dst_xapi" ~transport ~http xml
 
 (* Use HTTP 1.1, use the stunnel cache and pre-verify the connection *)
 let remote_rpc_retry context hostname (task_opt: API.ref_task option) xml =
+	debug "remote_rpc_retry";
 	let open Xmlrpc_client in
-	let transport = SSL(SSL.make ~use_stunnel_cache:true ?task_id:(may Ref.string_of task_opt) (),
-	hostname, !Xapi_globs.https_port) in
+	let transport = TCP(hostname, Xapi_globs.http_port) in
 	let http = xmlrpc ?task_id:(may Ref.string_of task_opt) ~version:"1.1" "/" in
 	XMLRPC_protocol.rpc ~srcstr:"xapi" ~dststr:"dst_xapi" ~transport ~http xml
 
