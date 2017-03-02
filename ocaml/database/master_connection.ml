@@ -176,7 +176,6 @@ exception Content_length_required
 let send_m = Mutex.create ()
 
 let send ~host ~path (req: string) : unit =
-  debug "jjd27: sending '%s'" req;
   let write_ok = ref false in
   while (not !write_ok)
   do
@@ -231,7 +230,6 @@ let recv () : Db_interface.response =
 			| Some l -> begin
 				if (Int64.to_int l) <= Sys.max_string_length then
 					let str = Unixext.really_read_string fd (Int64.to_int l) in
-					debug "jjd27: received response '%s'" str;
 					Db_interface.String str
 				else
 					let buf = Bigbuffer.make () in
