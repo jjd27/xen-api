@@ -14,6 +14,9 @@
 
 (** server-side for remote database access protocol v2 *)
 
+module D = Debug.Make(struct let name = "jjd27" end)
+open D
+
 open Db_rpc_common_v2
 open Db_exn
 
@@ -72,10 +75,15 @@ let process_rpc (req: Rpc.t) =
 let handler req bio _ =
 	let fd = Buf_io.fd_of bio in (* fd only used for writing *)
 	let body = Http_svr.read_body ~limit:Xapi_globs.http_limit_max_rpc_size req bio in
+	debug "jjd27: body = '%s'" body;
 	let request_rpc = Jsonrpc.of_string body in
 	match request_rpc with
 	| Rpc.Dict xs ->
 		let id = List.assoc "id" xs in
+		begin
+			match id with Rpc.Int id -> debug "handler: id = %Ld" id
+			| _ -> ()
+		end;
 		let request_rpc = List.assoc "contents" xs in
 		let reply_rpc = process_rpc request_rpc in
 		(* XXX: need to cope with > 16MiB responses *)

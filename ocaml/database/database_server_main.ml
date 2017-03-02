@@ -12,6 +12,7 @@ let c = Condition.create ()
 
 (** Handler for the remote database access URL *)
 let remote_database_access_handler_v1 req bio = 
+	debug "remote_database_access_handler_v1";
 	try
 		Db_remote_cache_access_v1.handler req bio
 	with e ->
@@ -22,6 +23,7 @@ let remote_database_access_handler_v1 req bio =
 
 (** Handler for the remote database access URL *)
 let remote_database_access_handler_v2 req bio = 
+	debug "remote_database_access_handler_v2";
 	try
 		Db_remote_cache_access_v2.handler req bio
 	with e ->
