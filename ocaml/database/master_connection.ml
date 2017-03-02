@@ -176,6 +176,7 @@ exception Content_length_required
 let send_m = Mutex.create ()
 
 let send ~host ~path (req: string) : unit =
+  debug "jjd27: sending to %s %s '%s'" host path req;
   let write_ok = ref false in
   while (not !write_ok)
   do
