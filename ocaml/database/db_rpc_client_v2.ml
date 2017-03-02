@@ -53,9 +53,9 @@ let rec dispatcher_thread () =
 		let response = Master_connection.recv () in
 		process_response response (fun id contents ->
 			if Hashtbl.mem map id then
-			let (cv, buf) = Hashtbl.find map id in
+			let (cv, mutex, buf) = Hashtbl.find map id in
 			buf := Some contents;
-			Condition.broadcast cv
+			Mutex.execute mutex (fun () -> Condition.broadcast cv)
 		)
 	with e ->
 		((*debug "jjd27: suppressing error %s in dispatcher_thread" (Printexc.to_string e)*))
@@ -83,10 +83,10 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 			let buf = ref None in
 			let cv = Condition.create () in
 			let mutex = Mutex.create () in
-			Hashtbl.add map id (cv, buf);
+			Hashtbl.add map id (cv, mutex, buf);
 
-			Master_connection.send ~host ~path:Constants.remote_db_access_uri_v2 request;
 			Mutex.execute mutex (fun () ->
+				Master_connection.send ~host ~path:Constants.remote_db_access_uri_v2 request;
 				Condition.wait cv mutex;
 				Hashtbl.remove map id;
 				match !buf with
