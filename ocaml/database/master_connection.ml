@@ -37,6 +37,7 @@ exception Cannot_connect_to_master
    the (now dead!) stunnel process.
 *)
 let force_connection_reset () =
+	debug "jjd27: force_connection_reset -- THIS WON'T WORK AS EXPECTED!";
 	(* Cleanup cached stunnel connections to the master, so that future API
 	   calls won't be blocked. *)
 	if Pool_role.is_slave () then begin
@@ -120,6 +121,8 @@ let on_database_connection_established = ref (fun () -> ())
 
 let open_secure_connection () =
   debug "jjd27: open_secure_connection";
+  match !my_connection with
+  | None ->
   let host = Pool_role.get_master_address () in
 (*
   let port = !Xapi_globs.https_port in
@@ -144,6 +147,9 @@ let open_secure_connection () =
   Unix.connect socket (Unix.ADDR_INET (Unix.inet_addr_of_string host, port));
   debug "jjd27: connected socket to %s:%d" host port;
   my_connection := Some {Stunnel.fd = socket; pid=Stunnel.Nopid; host=host; port=port; connected_time=0.; unique_id=None; verified=true; legacy=false; logfile="" }
+
+  | Some st_proc ->
+      debug "jjd27: not connecting; already connected to %s:%d" st_proc.Stunnel.host st_proc.Stunnel.port
 
 (*
 type t = { mutable pid: pid; fd: Unix.file_descr; host: string; port: int;
