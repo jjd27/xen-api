@@ -120,3 +120,5 @@ let allowed_unsigned_patches () = fistpoint_read "allowed_unsigned_patches"
 let allow_nvidia_vgpu_migration () = fistpoint "allow_nvidia_vgpu_migration"
 
 let nominated_vm () = fistpoint_read "nominated_vm"
+
+let redo_log_delay () = fistpoint_read "redo_log_delay"
