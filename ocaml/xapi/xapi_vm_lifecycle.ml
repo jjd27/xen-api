@@ -511,8 +511,8 @@ let force_state_reset_keep_current_operations ~__context ~self ~value:state =
 	end;
 *)
 
-	Stats.time_this "diagnostics: fsrkco 3" (fun () -> Db.VM.set_power_state ~__context ~self ~value:state);
-	update_allowed_operations ~__context ~self
+	Stats.time_this "diagnostics: fsrkco 3" (fun () -> Db.VM.set_power_state ~__context ~self ~value:state)
+	(*update_allowed_operations ~__context ~self*)
 
 (** Called on new VMs (clones, imports) and on server start to manually refresh
     the power state, allowed_operations field etc.  Clean current-operations
