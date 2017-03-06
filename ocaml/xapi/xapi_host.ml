@@ -1668,8 +1668,8 @@ let diagnostic_measure_db_speed ~__context ~host =
 
   Printf.bprintf b "TIMING STATS\n";
   Printf.bprintf b "============\n";
-  measure "reads" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host));
-  measure "writes" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000))));
+  measure "reads" (fun () -> Stats.time_this "diagnostic: Db.Host.get_name_description" (fun () -> ignore(Db.Host.get_name_description ~__context ~self:host)));
+  measure "writes" (fun () -> Stats.time_this "diagnostic: Db.Host.set_name_description" (fun () -> ignore(Db.Host.set_name_description ~__context ~self:host ~value:(Printf.sprintf "%d" (Random.int 1000)))));
 
   Db.Host.set_name_description ~__context ~self:host ~value:desc_before;
   
