@@ -296,13 +296,17 @@ let unmarshall_read_records_where_args xml =
 		| _ -> raise DB_remote_marshall_error
 			
 let marshall_read_records_where_response refs_and_recs_list =
+	Stats.time_this "diagnostic: marshall_read_records_where_response" (fun () ->
 	XMLRPC.To.array
 		(List.map
 			(fun (ref,record)->
 				XMLRPC.To.array
 					[XMLRPC.To.string ref;
 					marshall_read_record_response record]) refs_and_recs_list)
+	)
+
 let unmarshall_read_records_where_response xml =
+	Stats.time_this "diagnostic: unmarshall_read_records_where_response" (fun () ->
 	match (XMLRPC.From.array (fun x->x) xml) with
 			xml_refs_and_recs_list ->
 				List.map
@@ -311,4 +315,5 @@ let unmarshall_read_records_where_response xml =
 								[ref_xml; rec_xml] -> (XMLRPC.From.string ref_xml, unmarshall_read_record_response rec_xml)
 							| _ -> raise DB_remote_marshall_error)
 					xml_refs_and_recs_list
+	)
 					

@@ -62,6 +62,25 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 					else process_exception_xml resp_xml
 			| _ -> raise Remote_db_server_returned_bad_message
 				
+	let do_remote_call_XXX marshall_args unmarshall_resp fn_name args =
+		Stats.time_this "diagnostic: do_remote_call_XXX" (fun () ->
+		let xml = Stats.time_this "diagnostic: do_remote_call_XXX.marshall_args" (fun () -> marshall_args args) in
+		let xml = Stats.time_this "diagnostic: do_remote_call_XXX.XMLRPC.To.array" (fun () -> XMLRPC.To.array [XMLRPC.To.string fn_name; XMLRPC.To.string "" (* unused *); xml]) in
+		let str = Stats.time_this "diagnostic: do_remote_call_XXX.Xml.to_string" (fun () -> Xml.to_string xml) in
+		let rpc = Stats.time_this "diagnostic: do_remote_call_XXX.RPC.rpc" (fun () -> RPC.rpc str) in
+		let resp = match rpc with
+		| Db_interface.String s -> Stats.time_this "diagnostic: do_remote_call_XXX.Xml.parse_string" (fun () -> Xml.parse_string s)
+		| Db_interface.Bigbuf b -> Stats.time_this "diagnostic: do_remote_call_XXX.Xml.parse_bigbuffer" (fun () -> Xml.parse_bigbuffer b)
+		in
+		Stats.time_this "diagnostic: do_remote_call_XXX.XMLRPC.From.array" (fun () ->
+		match XMLRPC.From.array (fun x->x) resp with
+				[status_xml; resp_xml] ->
+					let status = Stats.time_this "diagnostic: do_remote_call_XXX.XMLRPC.From.string" (fun () -> XMLRPC.From.string status_xml) in
+					if status="success" then Stats.time_this "diagnostic: do_remote_call_XXX.unmarshall_resp" (fun () -> unmarshall_resp resp_xml)
+					else process_exception_xml resp_xml
+			| _ -> raise Remote_db_server_returned_bad_message
+		))
+				
 	let get_table_from_ref _ x =
 		do_remote_call
 			marshall_get_table_from_ref_args
@@ -160,11 +179,13 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 			(x,y)
 			
 	let read_records_where _ x e =
-		do_remote_call
+		Stats.time_this "diagnostic: Db_rpc_client_v1.read_records_where" (fun () ->
+		do_remote_call_XXX
 			marshall_read_records_where_args
 			unmarshall_read_records_where_response
 			"read_records_where"
 			(x,e)
+		)
 		
 	let process_structured_field _ a b c d e =
 		do_remote_call
