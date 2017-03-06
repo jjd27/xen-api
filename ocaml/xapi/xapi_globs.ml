@@ -1114,4 +1114,14 @@ end
 
 let interesting_stats = [
 	"diagnostic: Db.Host.get_name_description"; "diagnostic: Db.Host.set_name_description";
+	"diagnostic: Db_rpc_client_v1.read_field"; "diagnostic: Db_rpc_client_v1.write_field";
+	"diagnostic: RPC.rpc";
+	"diagnostic: Db_lock.with_lock"; "diagnostic: do_db_xml_rpc_persistent_with_reopen";
+	"diagnostic: with_http request";
+	"diagnostic: Db_remote_cache_access_v1.handler";
+	"diagnostic: Http_svr.read_body";
+	"diagnostic: Xml.parse_string";
+	"diagnostic: DBCacheRemoteListener.process_xmlrpc";
+	"diagnostic: Xml.to_bigbuffer";
+	"diagnostic: Http_svr.response_fct";
 ]

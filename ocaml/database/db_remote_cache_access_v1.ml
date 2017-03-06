@@ -123,10 +123,14 @@ module DBCacheRemoteListener = struct
 end
 
 let handler req bio _ =
+	Stats.time_this "diagnostic: Db_remote_cache_access_v1.handler" (fun () ->
 	let fd = Buf_io.fd_of bio in (* fd only used for writing *)
-	let body = Http_svr.read_body ~limit:Xapi_globs.http_limit_max_rpc_size req bio in
-	let body_xml = Xml.parse_string body in
-	let reply_xml = DBCacheRemoteListener.process_xmlrpc body_xml in
-	let response = Xml.to_bigbuffer reply_xml in
+	let body = Stats.time_this "diagnostic: Http_svr.read_body" (fun () -> Http_svr.read_body ~limit:Xapi_globs.http_limit_max_rpc_size req bio) in
+	let body_xml = Stats.time_this "diagnostic: Xml.parse_string" (fun () -> Xml.parse_string body) in
+	let reply_xml = Stats.time_this "diagnostic: DBCacheRemoteListener.process_xmlrpc" (fun () -> DBCacheRemoteListener.process_xmlrpc body_xml) in
+	let response = Stats.time_this "diagnostic: Xml.to_bigbuffer" (fun () -> Xml.to_bigbuffer reply_xml) in
+	Stats.time_this "diagnostic: Http_svr.response_fct" (fun () ->
 	Http_svr.response_fct req fd (Bigbuffer.length response)
 		(fun fd -> Bigbuffer.to_fct response (fun s -> ignore(Unix.write fd s 0 (String.length s)))) 
+	)
+	)
