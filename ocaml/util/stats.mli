@@ -20,6 +20,8 @@ val time_this : string -> (unit -> 'a) -> 'a
 (** [sample thing t] records new time [t] for population named [thing] *)
 val sample : string -> float -> unit
 
+val reset : string -> unit
+
 type dbcallty = Read | Write | Create | Drop
 val log_db_call : string option -> string -> dbcallty -> unit
 val summarise_db_calls : unit -> (string list * string list * string list * string list * (string * ((string * string) list)) list * (int * ((string * string) list)) list)

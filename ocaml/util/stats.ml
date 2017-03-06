@@ -88,6 +88,12 @@ let sample (name: string) (x: float) : unit =
   then debug "Population %s time more than 3 standard deviations from the mean (time = %f; mean = %s)" name x (string_of p)
 *)
 
+let reset (name: string) =
+  Mutex.execute timings_m
+    (fun () ->
+       Hashtbl.remove timings name
+    )
+
 (** Helper function to time a specific thing *)
 let time_this (name: string) f = 
   let start_time = Unix.gettimeofday () in
