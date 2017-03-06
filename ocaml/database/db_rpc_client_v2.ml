@@ -85,14 +85,18 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 			| _ -> raise Remote_db_server_returned_bad_message
 			
 	let write_field _ a b c d =
+		Stats.time_this "diagnostic: Db_rpc_client_v2.write_field" (fun () ->
 		match process (Request.Write_field (a, b, c, d)) with
 			| Response.Write_field y -> y
 			| _ -> raise Remote_db_server_returned_bad_message
+		)
 			
 	let read_field _ x y z =
+		Stats.time_this "diagnostic: Db_rpc_client_v2.read_field" (fun () ->
 		match process (Request.Read_field (x, y, z)) with
 			| Response.Read_field y -> y
 			| _ -> raise Remote_db_server_returned_bad_message
+		)
 			
 	let find_refs_with_filter _ s e =
 		match process (Request.Find_refs_with_filter (s, e)) with
@@ -105,9 +109,11 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
 			| _ -> raise Remote_db_server_returned_bad_message
 			
 	let read_records_where _ x e =
+		Stats.time_this "diagnostic: Db_rpc_client_v2.read_records_where" (fun () ->
 		match process (Request.Read_records_where (x, e)) with
 			| Response.Read_records_where y -> y
 			| _ -> raise Remote_db_server_returned_bad_message
+		)
 
 	let process_structured_field _ a b c d e =
 		match process (Request.Process_structured_field(a, b, c, d, e)) with

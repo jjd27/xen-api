@@ -1115,6 +1115,7 @@ end
 let interesting_stats = [
 	"diagnostic: Db.Host.get_name_description"; "diagnostic: Db.Host.set_name_description";
 	"diagnostic: Db_rpc_client_v1.read_field"; "diagnostic: Db_rpc_client_v1.write_field"; "diagnostic: Db_rpc_client_v1.read_records_where";
+	"diagnostic: Db_rpc_client_v2.read_field"; "diagnostic: Db_rpc_client_v2.write_field"; "diagnostic: Db_rpc_client_v2.read_records_where";
 	"diagnostic: unmarshall_read_records_where_response"; "diagnostic: marshall_read_records_where_response";
 	"diagnostic: do_remote_call_XXX";
 	"diagnostic: do_remote_call_XXX.marshall_args";
