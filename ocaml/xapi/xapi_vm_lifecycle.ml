@@ -484,12 +484,13 @@ let force_state_reset_keep_current_operations ~__context ~self ~value:state =
 		 * following code is there "just to be sure".
 		 *)
 		Stats.time_this "diagnostics: fsrkco 1.5" (fun () ->
-		List.iter
+		let recs = Stats.time_this "diagnostics: fsrkco 1.5.1" (fun () -> Db.PCI.get_internal_records_where ~__context ~expr:Db_filter_types.True) in
+		Stats.time_this "diagnostics: fsrkco 1.5.2" (fun () -> List.iter
 			(fun (pci_ref, pci) ->
 				if List.mem self (pci.Db_actions.pCI_attached_VMs) then
 					Db.PCI.remove_attached_VMs ~__context ~self:pci_ref ~value:self
 			)
-			(Db.PCI.get_internal_records_where ~__context ~expr:Db_filter_types.True))
+			recs));
 	end
 	);
 

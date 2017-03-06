@@ -1141,6 +1141,8 @@ let interesting_stats = [
 	"diagnostics: fsrkco 1.3";
 	"diagnostics: fsrkco 1.4";
 	"diagnostics: fsrkco 1.5";
+	"diagnostics: fsrkco 1.5.1";
+	"diagnostics: fsrkco 1.5.2";
 	"diagnostics: fsrkco 2";
 	"diagnostics: fsrkco 3";
 ]
