@@ -28,6 +28,7 @@ let allow_concurrent_db_access = true
 
 (* Necessary because initialise is never called... *)
 let d_thread_running = ref false
+let d_thread_m = Mutex.create ()
 
 let process_response response f =
   match response with
@@ -71,8 +72,10 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
     let request = Jsonrpc.to_string (Rpc.Dict ["contents", x; "id", Rpc.Int id]) in
     if allow_concurrent_db_access then begin
       (* TODO because initialise is never called *)
-      if not !d_thread_running then ignore (Thread.create dispatcher_thread ()); (* TODO mutex *)
-  
+      Mutex.execute d_thread_m (fun () ->
+        if not !d_thread_running then ignore (Thread.create dispatcher_thread ())
+      );
+
       let buf = ref None in
       let cv = Condition.create () in
       let mutex = Mutex.create () in
