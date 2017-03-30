@@ -25,6 +25,7 @@ module D = Debug.Make(struct let name = "master_connection" end)
 open D
 
 let my_connection : Stunnel.t option ref = ref None
+let master_conn_m = Mutex.create ()
 
 exception Cannot_connect_to_master
 
@@ -118,7 +119,8 @@ exception Goto_handler
     on slave start and then every time after the master restarts and we reconnect. *)
 let on_database_connection_established = ref (fun () -> ())
 
-let open_secure_connection () =
+(* Only called when master_conn_m is held *)
+let open_secure_connection_once () =
   let host = Pool_role.get_master_address () in
   let port = !Xapi_globs.https_port in
   let st_proc = Stunnel.connect ~use_fork_exec_helper:true
@@ -135,6 +137,19 @@ let open_secure_connection () =
     let () = try Stunnel.disconnect st_proc with _ -> () in
     raise Goto_handler
   end
+
+let open_secure_connection () =
+  debug "jjd27: calling open_secure_connection";
+  Mutex.execute master_conn_m (fun () ->
+    debug "jjd27: checking for existing connection";
+    match !my_connection with
+    | Some _ ->
+        debug "jjd27: already have a connection";
+        ()
+    | None ->
+        debug "jjd27: need to open a new connection";
+        open_secure_connection_once ()
+  )
 
 (* Do a db xml_rpc request, catching exception and trying to reopen the connection if it
    fails *)
