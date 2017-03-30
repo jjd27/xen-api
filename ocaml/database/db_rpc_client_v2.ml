@@ -32,6 +32,7 @@ let d_thread_m = Mutex.create ()
 
 let process_response response f =
   match response with
+  | Db_interface.String s when s = "" -> raise (Failure "We got an empty response")
   | Db_interface.String s -> begin
     match Jsonrpc.of_string s with
     | Rpc.Dict xs ->
@@ -60,7 +61,7 @@ module Make = functor(RPC: Db_interface.RPC) -> struct
         Mutex.execute mutex (fun () -> Condition.broadcast cv)
       )
     with e ->
-      ((*debug "jjd27: suppressing error %s in dispatcher_thread" (Printexc.to_string e)*))
+      debug "jjd27: suppressing error %s in dispatcher_thread: %s" (Printexc.to_string e) (Printexc.get_backtrace ());
     end;
     dispatcher_thread ()
 
